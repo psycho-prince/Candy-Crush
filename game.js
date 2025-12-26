@@ -10,7 +10,7 @@ const game = new Phaser.Game(config);
 
 const GRID_SIZE = 10;
 const TILE_SIZE = Math.floor(window.innerWidth / 11);
-const OFFSET_Y = 200;
+const OFFSET_Y = 150; // Moved grid up slightly
 const ANIMAL_FRAMES = [0, 1, 2, 3, 4, 5];
 
 let grid = [];
@@ -26,11 +26,27 @@ function preload() {
 }
 
 function create() {
-    // 1. Setup HUD
-    this.scoreText = this.add.text(20, 40, 'SCORE: 0', { fontSize: '24px', fill: '#0fcc' }).setDepth(10).setVisible(false);
-    this.timerText = this.add.text(window.innerWidth - 100, 40, '60s', { fontSize: '24px', fill: '#0fcc' }).setDepth(10).setVisible(false);
+    const style = { fontSize: '24px', fill: '#0fcc', fontStyle: 'bold' };
     
-    // 2. Initial Grid Fill
+    // 1. HUD (Top)
+    this.scoreText = this.add.text(20, 40, 'SCORE: 0', style).setDepth(10).setVisible(false);
+    this.timerText = this.add.text(window.innerWidth - 100, 40, '60s', style).setDepth(10).setVisible(false);
+    
+    // 2. QUIT BUTTON (Bottom Center - completely clear of blocks)
+    const quitY = OFFSET_Y + (GRID_SIZE * TILE_SIZE) + 40;
+    this.quitBtn = this.add.text(window.innerWidth / 2, quitY, 'QUIT TO MENU', { 
+        fontSize: '22px', 
+        backgroundColor: '#e74c3c', 
+        color: '#ffffff',
+        padding: { x: 20, y: 10 }, 
+        fontStyle: 'bold' 
+    }).setOrigin(0.5).setInteractive().setDepth(10).setVisible(false);
+
+    this.quitBtn.on('pointerdown', () => {
+        location.reload(); 
+    });
+
+    // 3. Initial Grid Fill
     for (let y = 0; y < GRID_SIZE; y++) {
         grid[y] = [];
         for (let x = 0; x < GRID_SIZE; x++) {
@@ -38,7 +54,7 @@ function create() {
         }
     }
 
-    // 3. Menus
+    // 4. Menus
     createMenus(this);
 }
 
@@ -78,26 +94,15 @@ function executeSwap(scene, t1, t2) {
     const x1 = t1.getData('x'), y1 = t1.getData('y');
     const x2 = t2.getData('x'), y2 = t2.getData('y');
 
-    // Visual Move
+    scene.tweens.add({ targets: t1, x: x2 * TILE_SIZE + TILE_SIZE, y: y2 * TILE_SIZE + OFFSET_Y, duration: 200 });
     scene.tweens.add({
-        targets: t1,
-        x: x2 * TILE_SIZE + TILE_SIZE, y: y2 * TILE_SIZE + OFFSET_Y,
-        duration: 200
-    });
-    scene.tweens.add({
-        targets: t2,
-        x: x1 * TILE_SIZE + TILE_SIZE, y: y1 * TILE_SIZE + OFFSET_Y,
-        duration: 200,
+        targets: t2, x: x1 * TILE_SIZE + TILE_SIZE, y: y1 * TILE_SIZE + OFFSET_Y, duration: 200,
         onComplete: () => {
-            // Logical Move
             grid[y1][x1] = t2; grid[y2][x2] = t1;
             t1.setData({ x: x2, y: y2 }); t2.setData({ x: x1, y: y1 });
 
             if (!findMatches(scene)) {
-                // Return if no match
-                scene.tweens.add({
-                    targets: t1, x: x1 * TILE_SIZE + TILE_SIZE, y: y1 * TILE_SIZE + OFFSET_Y, duration: 200
-                });
+                scene.tweens.add({ targets: t1, x: x1 * TILE_SIZE + TILE_SIZE, y: y1 * TILE_SIZE + OFFSET_Y, duration: 200 });
                 scene.tweens.add({
                     targets: t2, x: x2 * TILE_SIZE + TILE_SIZE, y: y2 * TILE_SIZE + OFFSET_Y, duration: 200,
                     onComplete: () => {
@@ -115,7 +120,6 @@ function executeSwap(scene, t1, t2) {
 
 function findMatches(scene) {
     let toDestroy = new Set();
-    // Check Horizontally
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE - 2; x++) {
             if (grid[y][x].getData('color') === grid[y][x+1].getData('color') && grid[y][x].getData('color') === grid[y][x+2].getData('color')) {
@@ -123,7 +127,6 @@ function findMatches(scene) {
             }
         }
     }
-    // Check Vertically
     for (let x = 0; x < GRID_SIZE; x++) {
         for (let y = 0; y < GRID_SIZE - 2; y++) {
             if (grid[y][x].getData('color') === grid[y+1][x].getData('color') && grid[y][x].getData('color') === grid[y+2][x].getData('color')) {
@@ -131,13 +134,8 @@ function findMatches(scene) {
             }
         }
     }
-
     if (toDestroy.size > 0) {
-        toDestroy.forEach(t => {
-            grid[t.getData('y')][t.getData('x')] = null;
-            t.destroy();
-            score += 10;
-        });
+        toDestroy.forEach(t => { grid[t.getData('y')][t.getData('x')] = null; t.destroy(); score += 10; });
         scene.scoreText.setText('SCORE: ' + score);
         scene.sound.play('pop');
         return true;
@@ -150,25 +148,18 @@ function runGravity(scene) {
     for (let x = 0; x < GRID_SIZE; x++) {
         let holes = 0;
         for (let y = GRID_SIZE - 1; y >= 0; y--) {
-            if (grid[y][x] === null) {
-                holes++;
-            } else if (holes > 0) {
+            if (grid[y][x] === null) { holes++; } 
+            else if (holes > 0) {
                 let t = grid[y][x];
-                grid[y + holes][x] = t;
-                grid[y][x] = null;
+                grid[y + holes][x] = t; grid[y][x] = null;
                 t.setData('y', y + holes);
-                scene.tweens.add({
-                    targets: t,
-                    y: (y + holes) * TILE_SIZE + OFFSET_Y,
-                    duration: 300
-                });
+                scene.tweens.add({ targets: t, y: (y + holes) * TILE_SIZE + OFFSET_Y, duration: 300 });
                 maxWait = 350;
             }
         }
         for (let i = 0; i < holes; i++) {
             let t = createTile(scene, x, i);
-            grid[i][x] = t;
-            t.y -= 200;
+            grid[i][x] = t; t.y -= 200;
             scene.tweens.add({ targets: t, y: i * TILE_SIZE + OFFSET_Y, duration: 400 });
             maxWait = 450;
         }
@@ -182,13 +173,20 @@ function runGravity(scene) {
 function createMenus(scene) {
     scene.mainMenu = scene.add.container(0, 0).setDepth(100);
     let bg = scene.add.rectangle(config.width/2, config.height/2, config.width, config.height, 0x1a1a2e, 1);
-    let btn1 = scene.add.text(config.width/2, config.height/2 - 50, 'START RUSH', { fontSize: '32px', backgroundColor: '#0fcc', padding: 10, color: '#000' }).setOrigin(0.5).setInteractive();
-    let btn2 = scene.add.text(config.width/2, config.height/2 + 50, 'ENDLESS', { fontSize: '32px', backgroundColor: '#f1c40f', padding: 10, color: '#000' }).setOrigin(0.5).setInteractive();
+    let btn1 = scene.add.text(config.width/2, config.height/2 - 60, 'START RUSH', { fontSize: '32px', backgroundColor: '#0fcc', padding: 15, color: '#000', fontStyle: 'bold' }).setOrigin(0.5).setInteractive();
+    let btn2 = scene.add.text(config.width/2, config.height/2 + 60, 'ENDLESS', { fontSize: '32px', backgroundColor: '#f1c40f', padding: 15, color: '#000', fontStyle: 'bold' }).setOrigin(0.5).setInteractive();
     
-    btn1.on('pointerdown', () => { scene.mainMenu.setVisible(false); gameActive = true; scene.scoreText.setVisible(true); startTimer(scene); });
-    btn2.on('pointerdown', () => { scene.mainMenu.setVisible(false); gameActive = true; scene.scoreText.setVisible(true); });
+    btn1.on('pointerdown', () => { hideMenu(scene); startTimer(scene); });
+    btn2.on('pointerdown', () => { hideMenu(scene); });
     
     scene.mainMenu.add([bg, btn1, btn2]);
+}
+
+function hideMenu(scene) {
+    scene.mainMenu.setVisible(false);
+    gameActive = true;
+    scene.scoreText.setVisible(true);
+    scene.quitBtn.setVisible(true);
 }
 
 function startTimer(scene) {
@@ -197,4 +195,4 @@ function startTimer(scene) {
 }
 
 function update() {}
-
+        
