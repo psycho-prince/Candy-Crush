@@ -1,16 +1,24 @@
+// Define functions first so the config can see them
+function preload() {
+    // FIX: Added ./ to the path for GitHub Pages compatibility
+    this.load.spritesheet('animals', './candy_sheet.png', { frameWidth: 136, frameHeight: 136 });
+    this.load.audio('pop', 'https://actions.google.com/sounds/v1/cartoon/pop.ogg');
+}
+
 const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
     height: window.innerHeight,
     backgroundColor: '#1a1a2e',
-    scene: { preload, create, update }
+    scene: { preload: preload, create: create, update: update }
 };
 
 const game = new Phaser.Game(config);
 
 const GRID_SIZE = 10;
+// Use a slightly smaller tile size to ensure it fits mobile screens with padding
 const TILE_SIZE = Math.floor(window.innerWidth / 11);
-const OFFSET_Y = 150; // Moved grid up slightly
+const OFFSET_Y = 150;
 const ANIMAL_FRAMES = [0, 1, 2, 3, 4, 5];
 
 let grid = [];
@@ -20,33 +28,21 @@ let gameActive = false;
 let score = 0;
 let timeLeft = 60;
 
-function preload() {
-    this.load.spritesheet('animals', 'candy_sheet.png', { frameWidth: 136, frameHeight: 136 });
-    this.load.audio('pop', 'https://actions.google.com/sounds/v1/cartoon/pop.ogg');
-}
-
 function create() {
     const style = { fontSize: '24px', fill: '#0fcc', fontStyle: 'bold' };
     
-    // 1. HUD (Top)
-    this.scoreText = this.add.text(20, 40, 'SCORE: 0', style).setDepth(10).setVisible(false);
-    this.timerText = this.add.text(window.innerWidth - 100, 40, '60s', style).setDepth(10).setVisible(false);
+    this.scoreText = this.add.text(20, 40, 'SCORE: 0', style).setDepth(20).setVisible(false);
+    this.timerText = this.add.text(window.innerWidth - 100, 40, '60s', style).setDepth(20).setVisible(false);
     
-    // 2. QUIT BUTTON (Bottom Center - completely clear of blocks)
-    const quitY = OFFSET_Y + (GRID_SIZE * TILE_SIZE) + 40;
+    const quitY = OFFSET_Y + (GRID_SIZE * TILE_SIZE) + 60;
     this.quitBtn = this.add.text(window.innerWidth / 2, quitY, 'QUIT TO MENU', { 
-        fontSize: '22px', 
-        backgroundColor: '#e74c3c', 
-        color: '#ffffff',
-        padding: { x: 20, y: 10 }, 
-        fontStyle: 'bold' 
-    }).setOrigin(0.5).setInteractive().setDepth(10).setVisible(false);
+        fontSize: '22px', backgroundColor: '#e74c3c', color: '#ffffff',
+        padding: { x: 20, y: 10 }, fontStyle: 'bold' 
+    }).setOrigin(0.5).setInteractive().setDepth(20).setVisible(false);
 
-    this.quitBtn.on('pointerdown', () => {
-        location.reload(); 
-    });
+    this.quitBtn.on('pointerdown', () => { location.reload(); });
 
-    // 3. Initial Grid Fill
+    // Fill grid
     for (let y = 0; y < GRID_SIZE; y++) {
         grid[y] = [];
         for (let x = 0; x < GRID_SIZE; x++) {
@@ -54,7 +50,6 @@ function create() {
         }
     }
 
-    // 4. Menus
     createMenus(this);
 }
 
@@ -120,22 +115,33 @@ function executeSwap(scene, t1, t2) {
 
 function findMatches(scene) {
     let toDestroy = new Set();
+    // Rows
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE - 2; x++) {
-            if (grid[y][x].getData('color') === grid[y][x+1].getData('color') && grid[y][x].getData('color') === grid[y][x+2].getData('color')) {
-                toDestroy.add(grid[y][x]); toDestroy.add(grid[y][x+1]); toDestroy.add(grid[y][x+2]);
+            let t1 = grid[y][x], t2 = grid[y][x+1], t3 = grid[y][x+2];
+            if (t1 && t2 && t3 && t1.getData('color') === t2.getData('color') && t1.getData('color') === t3.getData('color')) {
+                toDestroy.add(t1); toDestroy.add(t2); toDestroy.add(t3);
             }
         }
     }
+    // Cols
     for (let x = 0; x < GRID_SIZE; x++) {
         for (let y = 0; y < GRID_SIZE - 2; y++) {
-            if (grid[y][x].getData('color') === grid[y+1][x].getData('color') && grid[y][x].getData('color') === grid[y+2][x].getData('color')) {
-                toDestroy.add(grid[y][x]); toDestroy.add(grid[y+1][x]); toDestroy.add(grid[y+2][x]);
+            let t1 = grid[y][x], t2 = grid[y+1][x], t3 = grid[y+2][x];
+            if (t1 && t2 && t3 && t1.getData('color') === t2.getData('color') && t1.getData('color') === t3.getData('color')) {
+                toDestroy.add(t1); toDestroy.add(t2); toDestroy.add(t3);
             }
         }
     }
+
     if (toDestroy.size > 0) {
-        toDestroy.forEach(t => { grid[t.getData('y')][t.getData('x')] = null; t.destroy(); score += 10; });
+        toDestroy.forEach(t => { 
+            if (t && t.active) { // Added safety check
+                grid[t.getData('y')][t.getData('x')] = null;
+                t.destroy();
+                score += 10;
+            }
+        });
         scene.scoreText.setText('SCORE: ' + score);
         scene.sound.play('pop');
         return true;
@@ -191,8 +197,14 @@ function hideMenu(scene) {
 
 function startTimer(scene) {
     scene.timerText.setVisible(true);
-    scene.time.addEvent({ delay: 1000, callback: () => { if(gameActive) { timeLeft--; scene.timerText.setText(timeLeft+'s'); if(timeLeft<=0) location.reload(); }}, loop: true });
+    scene.time.addEvent({ delay: 1000, callback: () => { 
+        if(gameActive) { 
+            timeLeft--; 
+            scene.timerText.setText(timeLeft+'s'); 
+            if(timeLeft<=0) location.reload(); 
+        }
+    }, loop: true });
 }
 
 function update() {}
-        
+
