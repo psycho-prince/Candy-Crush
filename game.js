@@ -1,7 +1,7 @@
 const config = {
     type: Phaser.AUTO,
-    width: 440,
-    height: 600,
+    width: 600,
+    height: 800,
     backgroundColor: '#2c3e50',
     scene: { preload: preload, create: create, update: update }
 };
@@ -9,7 +9,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 const GRID_SIZE = 8;
-const TILE_SIZE = 55;
+const TILE_SIZE = 70; 
 const ANIMAL_FRAMES = [0, 1, 2, 3, 4, 5]; 
 
 let grid = [];
@@ -22,10 +22,10 @@ let gameActive = false;
 let lastMoveTime = 0;
 let timerEvent;
 
-// UI Elements
-let scoreText, timerText, overlay, menuContainer;
+let scoreText, timerText, menuContainer, overlay;
 
 function preload() {
+    // Ensure the filename matches exactly what is on GitHub
     this.load.spritesheet('animals', 'candy_sheet.png', {
         frameWidth: 136, 
         frameHeight: 136
@@ -33,32 +33,24 @@ function preload() {
 }
 
 function create() {
-    // UI Layout
-    scoreText = this.add.text(20, 540, 'SCORE: 0', { fontSize: '24px', fill: '#fff', fontStyle: 'bold' });
-    timerText = this.add.text(280, 540, 'TIME: 60', { fontSize: '24px', fill: '#fff', fontStyle: 'bold' });
+    scoreText = this.add.text(40, 740, 'SCORE: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold' });
+    timerText = this.add.text(400, 740, 'TIME: 60', { fontSize: '32px', fill: '#fff', fontStyle: 'bold' });
 
-    // Initial Grid (Hidden by menu)
-    for (let y = 0; y < GRID_SIZE; y++) {
-        grid[y] = [];
-        for (let x = 0; x < GRID_SIZE; x++) {
-            spawnTile(x, y, this);
-        }
-    }
-
+    createGrid(this);
     createMenu(this);
 }
 
 function createMenu(scene) {
     menuContainer = scene.add.container(0, 0).setDepth(100);
-    overlay = scene.add.rectangle(220, 300, 440, 600, 0x000000, 0.85);
+    overlay = scene.add.rectangle(300, 400, 600, 800, 0x000000, 0.9);
     
-    let title = scene.add.text(220, 150, 'ANIMAL MATCH', { fontSize: '42px', fill: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5);
+    let title = scene.add.text(300, 200, 'ANIMAL MATCH', { fontSize: '60px', fill: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5);
     
-    let rushBtn = scene.add.text(220, 280, '1 MIN RUSH', { fontSize: '28px', backgroundColor: '#e74c3c', padding: 15 })
+    let rushBtn = scene.add.text(300, 350, '1 MIN RUSH', { fontSize: '36px', backgroundColor: '#e74c3c', padding: 20 })
         .setOrigin(0.5).setInteractive({ useHandCursor: true })
         .on('pointerdown', () => startLevel(scene, 'rush'));
 
-    let endlessBtn = scene.add.text(220, 380, 'ENDLESS MODE', { fontSize: '28px', backgroundColor: '#2ecc71', padding: 15 })
+    let endlessBtn = scene.add.text(300, 480, 'ENDLESS MODE', { fontSize: '36px', backgroundColor: '#2ecc71', padding: 20 })
         .setOrigin(0.5).setInteractive({ useHandCursor: true })
         .on('pointerdown', () => startLevel(scene, 'endless'));
 
@@ -76,8 +68,20 @@ function startLevel(scene, mode) {
 
     if (mode === 'rush') {
         timerText.setVisible(true);
-        startTimer(scene);
-        // Add OG Black Ball (Color Bomb) immediately in Rush
+        if (timerEvent) timerEvent.remove();
+        timerEvent = scene.time.addEvent({
+            delay: 1000,
+            callback: () => {
+                timeLeft--;
+                timerText.setText('TIME: ' + timeLeft);
+                if (timeLeft <= 0) {
+                    gameActive = false;
+                    menuContainer.setVisible(true);
+                }
+            },
+            loop: true
+        });
+        // Start with an OG Black Ball Color Bomb
         let rx = Phaser.Math.Between(0, 7), ry = Phaser.Math.Between(0, 7);
         makeSpecial(grid[ry][rx], 'colorBomb');
     } else {
@@ -86,16 +90,26 @@ function startLevel(scene, mode) {
 }
 
 function makeSpecial(tile, type) {
+    if (!tile) return;
     tile.setData('special', type);
     if (type === 'colorBomb') {
-        tile.setTint(0x333333); // The "Black Ball" look
+        tile.setTint(0x333333); // Black Ball look
+    }
+}
+
+function createGrid(scene) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+        grid[y] = [];
+        for (let x = 0; x < GRID_SIZE; x++) {
+            spawnTile(x, y, scene);
+        }
     }
 }
 
 function spawnTile(x, y, scene) {
     let frame = Phaser.Utils.Array.GetRandom(ANIMAL_FRAMES);
-    let tile = scene.add.sprite(x * TILE_SIZE + 30, y * TILE_SIZE + 50, 'animals', frame);
-    tile.setScale(0.38).setInteractive();
+    let tile = scene.add.sprite(x * TILE_SIZE + 55, y * TILE_SIZE + 100, 'animals', frame);
+    tile.setScale(0.48).setInteractive();
     tile.setData({ color: frame, gridX: x, gridY: y });
     tile.on('pointerdown', () => { if(gameActive) handleSelect(tile, scene); });
     grid[y][x] = tile;
@@ -117,12 +131,16 @@ async function handleSelect(tile, scene) {
             isProcessing = true;
             selectedTile.setAlpha(1);
 
-            // SPECIAL: Color Bomb Logic
             if (selectedTile.getData('special') === 'colorBomb' || tile.getData('special') === 'colorBomb') {
                 let colorToClear = (selectedTile.getData('special') === 'colorBomb') ? tile.getData('color') : selectedTile.getData('color');
                 await clearAllOfColor(scene, colorToClear);
-                if (selectedTile.getData('special') === 'colorBomb') selectedTile.destroy();
-                else tile.destroy();
+                if (selectedTile.getData('special') === 'colorBomb') {
+                    grid[y1][x1] = null;
+                    selectedTile.destroy();
+                } else {
+                    grid[y2][x2] = null;
+                    tile.destroy();
+                }
             } else {
                 await swapTiles(selectedTile, tile, scene);
                 if (checkMatches(scene)) {
@@ -162,9 +180,9 @@ function swapTiles(tile1, tile2, scene) {
         tile2.setData({gridX: x1, gridY: y1});
         scene.tweens.add({
             targets: [tile1, tile2],
-            x: (t) => t.getData('gridX') * TILE_SIZE + 30,
-            y: (t) => t.getData('gridY') * TILE_SIZE + 50,
-            duration: 200, onComplete: resolve
+            x: (t) => t.getData('gridX') * TILE_SIZE + 55,
+            y: (t) => t.getData('gridY') * TILE_SIZE + 100,
+            duration: 250, onComplete: resolve
         });
     });
 }
@@ -173,14 +191,12 @@ function checkMatches(scene) {
     let toDestroy = new Set();
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
-            // Horizontal
             if (x < GRID_SIZE - 2 && grid[y][x] && grid[y][x+1] && grid[y][x+2]) {
                 if (grid[y][x].getData('color') === grid[y][x+1].getData('color') && 
                     grid[y][x].getData('color') === grid[y][x+2].getData('color')) {
                     toDestroy.add(grid[y][x]); toDestroy.add(grid[y][x+1]); toDestroy.add(grid[y][x+2]);
                 }
             }
-            // Vertical
             if (y < GRID_SIZE - 2 && grid[y][x] && grid[y+1][x] && grid[y+2][x]) {
                 if (grid[y][x].getData('color') === grid[y+1][x].getData('color') && 
                     grid[y][x].getData('color') === grid[y+2][x].getData('color')) {
@@ -211,7 +227,7 @@ async function processMatches(scene) {
                     if (grid[k][x]) {
                         grid[y][x] = grid[k][x]; grid[k][x] = null;
                         grid[y][x].setData('gridY', y);
-                        scene.tweens.add({ targets: grid[y][x], y: y * TILE_SIZE + 50, duration: 300, ease: 'Bounce' });
+                        scene.tweens.add({ targets: grid[y][x], y: y * TILE_SIZE + 100, duration: 400, ease: 'Bounce' });
                         break;
                     }
                 }
@@ -223,32 +239,15 @@ async function processMatches(scene) {
             if (grid[y][x] === null) {
                 let tile = spawnTile(x, y, scene);
                 tile.y = -50;
-                scene.tweens.add({ targets: tile, y: y * TILE_SIZE + 50, duration: 300 });
+                scene.tweens.add({ targets: tile, y: y * TILE_SIZE + 100, duration: 400 });
             }
         }
     }
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 600));
     if (checkMatches(scene)) await processMatches(scene);
 }
 
-function startTimer(scene) {
-    if (timerEvent) timerEvent.remove();
-    timerEvent = scene.time.addEvent({
-        delay: 1000,
-        callback: () => {
-            timeLeft--;
-            timerText.setText('TIME: ' + timeLeft);
-            if (timeLeft <= 0) {
-                gameActive = false;
-                menuContainer.setVisible(true);
-            }
-        },
-        loop: true
-    });
-}
-
 function update(time) {
-    // Hint System: Pulse an animal after 5s
     if (gameActive && time - lastMoveTime > 5000) {
         let rx = Phaser.Math.Between(0, 7), ry = Phaser.Math.Between(0, 7);
         if (grid[ry][rx]) {
@@ -257,4 +256,4 @@ function update(time) {
         }
     }
 }
-
+    
